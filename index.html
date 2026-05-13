@@ -469,6 +469,7 @@
   </div>
 
   <audio id="audio"></audio>
+  <audio id="audio-stream"></audio>
 
   <div class="modal-bg" id="modal-bg">
     <div class="modal">
@@ -552,6 +553,14 @@ let loop = false;
 
 // ===== DOM =====
 const audio = document.getElementById('audio');
+const audioStream = document.getElementById('audio-stream');
+let activeAudio = audio;
+function switchTo(el) {
+  if (activeAudio !== el) {
+    try { activeAudio.pause(); } catch {}
+    activeAudio = el;
+  }
+}
 const playBtn = document.getElementById('play-btn');
 const prevBtn = document.getElementById('prev-btn');
 const nextBtn = document.getElementById('next-btn');
@@ -786,6 +795,7 @@ async function playCurrent() {
   const id = currentQueue[currentIndex];
   const t = allTracks.find(x => x.id === id);
   if (!t) return;
+  switchTo(audio);
   audio.src = t.url;
   trackTitle.textContent = t.name;
   trackInfo.textContent = t.artist || (t.source === 'archive' ? 'Internet Archive' : 'Archivo local');
@@ -794,7 +804,7 @@ async function playCurrent() {
 }
 
 function togglePlay() {
-  if (currentIndex === -1) {
+  if (activeAudio === audio && currentIndex === -1 && !audio.src) {
     const pl = getCurrentPlaylist();
     if (pl && pl.trackIds.length > 0) {
       currentQueue = pl.trackIds.slice();
@@ -803,8 +813,8 @@ function togglePlay() {
     }
     return;
   }
-  if (audio.paused) audio.play();
-  else audio.pause();
+  if (activeAudio.paused) activeAudio.play();
+  else activeAudio.pause();
 }
 
 function nextTrack() {
@@ -826,27 +836,51 @@ playBtn.onclick = togglePlay;
 nextBtn.onclick = nextTrack;
 prevBtn.onclick = prevTrack;
 shuffleBtn.onclick = () => { shuffle = !shuffle; shuffleBtn.classList.toggle('active', shuffle); };
-loopBtn.onclick = () => { loop = !loop; audio.loop = loop; loopBtn.classList.toggle('active', loop); };
-
-audio.onplay = () => playBtn.textContent = '⏸';
-audio.onpause = () => playBtn.textContent = '▶';
-audio.onended = () => { if (!loop) nextTrack(); };
-audio.ontimeupdate = () => {
-  if (audio.duration) {
-    progressFill.style.width = (audio.currentTime / audio.duration * 100) + '%';
-    currentTimeEl.textContent = formatTime(audio.currentTime);
-  }
+loopBtn.onclick = () => {
+  loop = !loop;
+  audio.loop = loop; audioStream.loop = loop;
+  loopBtn.classList.toggle('active', loop);
 };
-audio.onloadedmetadata = () => durationEl.textContent = formatTime(audio.duration);
+
+function bindAudioEvents(el) {
+  el.addEventListener('play', () => {
+    if (el !== activeAudio) return;
+    playBtn.textContent = '⏸';
+  });
+  el.addEventListener('pause', () => {
+    if (el !== activeAudio) return;
+    playBtn.textContent = '▶';
+  });
+  el.addEventListener('ended', () => {
+    if (el !== activeAudio) return;
+    if (!loop) nextTrack();
+  });
+  el.addEventListener('timeupdate', () => {
+    if (el !== activeAudio) return;
+    if (el.duration && isFinite(el.duration)) {
+      progressFill.style.width = (el.currentTime / el.duration * 100) + '%';
+      currentTimeEl.textContent = formatTime(el.currentTime);
+    }
+  });
+  el.addEventListener('loadedmetadata', () => {
+    if (el !== activeAudio) return;
+    durationEl.textContent = isFinite(el.duration) && el.duration > 0 ? formatTime(el.duration) : 'LIVE';
+  });
+}
+bindAudioEvents(audio);
+bindAudioEvents(audioStream);
 
 progressBar.onclick = e => {
-  if (!audio.duration) return;
+  if (!activeAudio.duration || !isFinite(activeAudio.duration)) return;
   const rect = progressBar.getBoundingClientRect();
-  audio.currentTime = ((e.clientX - rect.left) / rect.width) * audio.duration;
+  activeAudio.currentTime = ((e.clientX - rect.left) / rect.width) * activeAudio.duration;
 };
 
-volumeSlider.oninput = e => audio.volume = parseFloat(e.target.value);
-audio.volume = parseFloat(volumeSlider.value);
+volumeSlider.oninput = e => {
+  const v = parseFloat(e.target.value);
+  audio.volume = v; audioStream.volume = v;
+};
+audio.volume = audioStream.volume = parseFloat(volumeSlider.value);
 
 document.onkeydown = e => {
   if (e.target.tagName === 'INPUT') return;
@@ -982,11 +1016,12 @@ async function previewArchive(identifier, title, artist) {
   searchStatus.textContent = 'Cargando preview...';
   try {
     const url = await getArchiveAudioUrl(identifier);
-    audio.src = url;
+    switchTo(audioStream);
+    audioStream.src = url;
     trackTitle.textContent = title;
     trackInfo.textContent = artist + ' (preview)';
     currentQueue = []; currentIndex = -1;
-    await audio.play();
+    await audioStream.play();
     searchStatus.textContent = 'Reproduciendo preview';
   } catch (err) {
     searchStatus.textContent = 'Error: ' + err.message;
@@ -1089,11 +1124,12 @@ async function searchAudius(query) {
 
 async function previewAudius(host, t) {
   const url = `${host}/v1/tracks/${t.id}/stream?app_name=MiReproductor`;
-  audio.src = url;
+  switchTo(audioStream);
+  audioStream.src = url;
   trackTitle.textContent = t.title;
   trackInfo.textContent = (t.user?.name || 'Audius') + ' (preview)';
   currentQueue = []; currentIndex = -1;
-  try { await audio.play(); } catch(e) {}
+  try { await audioStream.play(); } catch(e) {}
 }
 
 async function downloadAudius(el, host, t) {
@@ -1258,13 +1294,14 @@ async function toggleFavRadio(s, btn) {
 }
 
 async function playRadio(s) {
-  audio.src = s.url_resolved;
+  switchTo(audioStream);
+  audioStream.src = s.url_resolved;
   trackTitle.textContent = s.name.trim();
   trackInfo.textContent = (s.country || 'Radio') + ' · EN VIVO';
   currentQueue = []; currentIndex = -1;
   durationEl.textContent = 'LIVE';
   try {
-    await audio.play();
+    await audioStream.play();
     radioStatus.textContent = 'Reproduciendo: ' + s.name.trim();
   } catch (err) {
     radioStatus.textContent = 'No se pudo reproducir esta emisora';
@@ -1499,22 +1536,24 @@ function setMediaMetadata(t, isLive) {
 }
 
 if ('mediaSession' in navigator) {
-  navigator.mediaSession.setActionHandler('play', () => audio.play());
-  navigator.mediaSession.setActionHandler('pause', () => audio.pause());
+  navigator.mediaSession.setActionHandler('play', () => activeAudio.play());
+  navigator.mediaSession.setActionHandler('pause', () => activeAudio.pause());
   navigator.mediaSession.setActionHandler('previoustrack', () => prevTrack());
   navigator.mediaSession.setActionHandler('nexttrack', () => nextTrack());
   try {
     navigator.mediaSession.setActionHandler('seekto', e => {
-      if (e.seekTime != null && isFinite(audio.duration)) audio.currentTime = e.seekTime;
+      if (e.seekTime != null && isFinite(activeAudio.duration)) activeAudio.currentTime = e.seekTime;
     });
   } catch {}
 }
 
-audio.addEventListener('play', () => {
-  if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
-});
-audio.addEventListener('pause', () => {
-  if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+[audio, audioStream].forEach(el => {
+  el.addEventListener('play', () => {
+    if (el === activeAudio && 'mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
+  });
+  el.addEventListener('pause', () => {
+    if (el === activeAudio && 'mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+  });
 });
 
 // Engancho a playCurrent, previewArchive, previewAudius, playRadio
