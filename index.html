@@ -90,6 +90,31 @@
     -webkit-appearance: none; width: 14px; height: 14px;
     background: #a78bfa; border-radius: 50%; cursor: pointer;
   }
+  .source-selector {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 10px; font-size: 13px;
+  }
+  .source-selector label { color: #aaa; }
+  .source-selector select {
+    flex: 1; padding: 7px 10px;
+    background: rgba(0,0,0,0.25);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px; color: #fff;
+    font-size: 13px; outline: none; cursor: pointer;
+  }
+  .source-selector select:focus { border-color: #a78bfa; }
+  .icon-btn.fav.saved { color: #fbbf24; background: rgba(251,191,36,0.15); }
+  .live-badge {
+    display: inline-block; padding: 1px 6px;
+    background: rgba(239,68,68,0.25); color: #fca5a5;
+    border-radius: 4px; font-size: 10px;
+    margin-right: 6px; font-weight: 600;
+  }
+  .section-title {
+    font-size: 11px; text-transform: uppercase;
+    letter-spacing: 1px; color: #888;
+    margin: 12px 4px 6px;
+  }
   .search-bar { display: flex; gap: 8px; margin-bottom: 14px; }
   .search-bar input {
     flex: 1; padding: 10px 14px;
@@ -250,6 +275,7 @@
     <div class="tabs">
       <button class="tab active" data-panel="library">Mi música</button>
       <button class="tab" data-panel="search">Buscar</button>
+      <button class="tab" data-panel="radio">Radio</button>
       <button class="tab" data-panel="upload">Añadir</button>
     </div>
 
@@ -260,12 +286,29 @@
     </div>
 
     <div class="panel" id="panel-search">
+      <div class="source-selector">
+        <label>Fuente:</label>
+        <select id="search-source">
+          <option value="archive">Internet Archive</option>
+          <option value="audius">Audius (indie)</option>
+        </select>
+      </div>
       <div class="search-bar">
         <input type="text" id="search-input" placeholder="Buscar canción, artista...">
         <button class="btn" id="search-btn">Buscar</button>
       </div>
-      <div class="status" id="search-status">Música libre desde Internet Archive</div>
+      <div class="status" id="search-status">Selecciona fuente y busca</div>
       <div class="results" id="results"></div>
+    </div>
+
+    <div class="panel" id="panel-radio">
+      <div class="search-bar">
+        <input type="text" id="radio-search-input" placeholder="Emisora, género, país (vacío = populares)">
+        <button class="btn" id="radio-search-btn">Buscar</button>
+      </div>
+      <div class="status" id="radio-status">Miles de emisoras desde Radio Browser</div>
+      <div id="radio-favorites-section"></div>
+      <div class="results" id="radio-results"></div>
     </div>
 
     <div class="panel" id="panel-upload">
@@ -297,7 +340,7 @@
 
 <script>
 // ===== IndexedDB =====
-const DB_NAME = 'reproductor', DB_VER = 2;
+const DB_NAME = 'reproductor', DB_VER = 3;
 let db;
 
 function openDB() {
@@ -308,6 +351,7 @@ function openDB() {
       if (!d.objectStoreNames.contains('tracks')) d.createObjectStore('tracks', { keyPath: 'id' });
       if (!d.objectStoreNames.contains('playlists')) d.createObjectStore('playlists', { keyPath: 'id' });
       if (!d.objectStoreNames.contains('handles')) d.createObjectStore('handles', { keyPath: 'key' });
+      if (!d.objectStoreNames.contains('radios')) d.createObjectStore('radios', { keyPath: 'id' });
     };
     req.onsuccess = e => { db = e.target.result; res(); };
     req.onerror = e => rej(e);
@@ -373,6 +417,12 @@ const searchInput = document.getElementById('search-input');
 const searchBtn = document.getElementById('search-btn');
 const searchStatus = document.getElementById('search-status');
 const resultsEl = document.getElementById('results');
+const searchSource = document.getElementById('search-source');
+const radioInput = document.getElementById('radio-search-input');
+const radioBtn = document.getElementById('radio-search-btn');
+const radioStatus = document.getElementById('radio-status');
+const radioResults = document.getElementById('radio-results');
+const radioFavSection = document.getElementById('radio-favorites-section');
 const fileInput = document.getElementById('file-input');
 const dropZone = document.getElementById('drop-zone');
 const pickFolderBtn = document.getElementById('pick-folder-btn');
@@ -798,9 +848,224 @@ async function downloadArchive(el, identifier, title, artist) {
 
 searchBtn.onclick = () => {
   const q = searchInput.value.trim();
-  if (q) searchArchive(q);
+  if (!q) return;
+  const src = searchSource.value;
+  if (src === 'audius') searchAudius(q);
+  else searchArchive(q);
 };
 searchInput.onkeydown = e => { if (e.key === 'Enter') searchBtn.click(); };
+
+// ===== Audius =====
+let audiusHost = null;
+async function getAudiusHost() {
+  if (audiusHost) return audiusHost;
+  try {
+    const res = await fetch('https://api.audius.co');
+    const data = await res.json();
+    audiusHost = data.data[Math.floor(Math.random() * data.data.length)];
+  } catch {
+    audiusHost = 'https://discoveryprovider.audius.co';
+  }
+  return audiusHost;
+}
+
+async function searchAudius(query) {
+  searchStatus.textContent = 'Buscando en Audius...';
+  resultsEl.innerHTML = '';
+  try {
+    const host = await getAudiusHost();
+    const url = `${host}/v1/tracks/search?query=${encodeURIComponent(query)}&app_name=MiReproductor`;
+    const res = await fetch(url);
+    const data = await res.json();
+    const tracks = (data.data || []).filter(t => t.is_streamable !== false);
+    if (tracks.length === 0) { searchStatus.textContent = 'Sin resultados'; return; }
+    searchStatus.textContent = tracks.length + ' resultados en Audius';
+    resultsEl.innerHTML = tracks.map(t => `
+      <div class="item" data-id="${t.id}">
+        <div class="text">
+          <div class="name">${escapeHtml(t.title)}</div>
+          <div class="sub">${escapeHtml(t.user?.name || 'Audius')}</div>
+          <div class="progress-dl" style="display:none"><div class="progress-dl-fill"></div></div>
+        </div>
+        <div class="actions">
+          <button class="icon-btn preview" title="Escuchar">▶</button>
+          <button class="icon-btn download" title="Descargar y guardar">⤓</button>
+        </div>
+      </div>
+    `).join('');
+    resultsEl.querySelectorAll('.item').forEach(el => {
+      const id = el.dataset.id;
+      const t = tracks.find(x => x.id === id);
+      el.querySelector('.preview').onclick = () => previewAudius(host, t);
+      el.querySelector('.download').onclick = () => downloadAudius(el, host, t);
+    });
+  } catch (err) {
+    searchStatus.textContent = 'Error: ' + err.message;
+  }
+}
+
+async function previewAudius(host, t) {
+  const url = `${host}/v1/tracks/${t.id}/stream?app_name=MiReproductor`;
+  audio.src = url;
+  trackTitle.textContent = t.title;
+  trackInfo.textContent = (t.user?.name || 'Audius') + ' (preview)';
+  currentQueue = []; currentIndex = -1;
+  try { await audio.play(); } catch(e) {}
+}
+
+async function downloadAudius(el, host, t) {
+  const progEl = el.querySelector('.progress-dl');
+  const fillEl = el.querySelector('.progress-dl-fill');
+  const dlBtn = el.querySelector('.download');
+  progEl.style.display = 'block';
+  dlBtn.disabled = true; dlBtn.textContent = '...';
+  try {
+    const url = `${host}/v1/tracks/${t.id}/stream?app_name=MiReproductor`;
+    const res = await fetch(url);
+    const total = +res.headers.get('content-length') || 0;
+    const reader = res.body.getReader();
+    const chunks = [];
+    let received = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      received += value.length;
+      if (total) fillEl.style.width = (received / total * 100) + '%';
+    }
+    const blob = new Blob(chunks, { type: 'audio/mpeg' });
+    const id = uid();
+    const track = { id, name: t.title, artist: t.user?.name || 'Audius', blob, source: 'audius' };
+    await saveTrack(track);
+    track.url = URL.createObjectURL(blob);
+    allTracks.push(track);
+    await addToPlaylist(id, currentPlaylistId);
+    renderPlaylist();
+    dlBtn.textContent = '✓';
+    setTimeout(() => { dlBtn.textContent = '⤓'; dlBtn.disabled = false; progEl.style.display = 'none'; }, 1500);
+  } catch (err) {
+    dlBtn.textContent = '⚠'; dlBtn.disabled = false;
+    alert('Error: ' + err.message);
+  }
+}
+
+// ===== Radio Browser =====
+const RADIO_API = 'https://de1.api.radio-browser.info';
+
+async function searchRadio(query) {
+  radioStatus.textContent = query ? 'Buscando emisoras...' : 'Cargando populares...';
+  radioResults.innerHTML = '';
+  try {
+    const url = query
+      ? `${RADIO_API}/json/stations/search?name=${encodeURIComponent(query)}&limit=40&hidebroken=true&order=clickcount&reverse=true&is_https=true`
+      : `${RADIO_API}/json/stations/topclick/40?hidebroken=true`;
+    const res = await fetch(url);
+    let stations = await res.json();
+    stations = stations.filter(s => s.url_resolved && s.url_resolved.startsWith('https://'));
+    if (stations.length === 0) {
+      radioStatus.textContent = 'Sin resultados con HTTPS. Prueba otra búsqueda.';
+      return;
+    }
+    radioStatus.textContent = stations.length + ' emisoras';
+    renderRadioResults(stations);
+  } catch (err) {
+    radioStatus.textContent = 'Error: ' + err.message;
+  }
+}
+
+async function getFavRadios() { return await idbAll('radios'); }
+
+function renderRadioResults(stations) {
+  const favs = window.__radioFavs || [];
+  const favIds = new Set(favs.map(f => f.id));
+  radioResults.innerHTML = '<div class="section-title">Resultados</div>' + stations.map(s => {
+    const sid = s.stationuuid;
+    const country = s.country || '';
+    const tags = (s.tags || '').split(',').slice(0, 2).filter(Boolean).join(', ');
+    const sub = [country, tags].filter(Boolean).join(' · ');
+    const isFav = favIds.has(sid);
+    return `
+      <div class="item" data-uuid="${sid}">
+        <div class="text">
+          <div class="name"><span class="live-badge">EN VIVO</span>${escapeHtml(s.name.trim())}</div>
+          <div class="sub">${escapeHtml(sub || 'Radio')}</div>
+        </div>
+        <div class="actions">
+          <button class="icon-btn play-radio" title="Reproducir">▶</button>
+          <button class="icon-btn fav ${isFav ? 'saved' : ''}" title="Guardar">★</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+  radioResults.querySelectorAll('.item').forEach(el => {
+    const uuid = el.dataset.uuid;
+    const s = stations.find(x => x.stationuuid === uuid);
+    el.querySelector('.play-radio').onclick = () => playRadio(s);
+    el.querySelector('.fav').onclick = () => toggleFavRadio(s, el.querySelector('.fav'));
+  });
+}
+
+async function renderRadioFavorites() {
+  const favs = await getFavRadios();
+  window.__radioFavs = favs;
+  if (favs.length === 0) { radioFavSection.innerHTML = ''; return; }
+  radioFavSection.innerHTML = '<div class="section-title">Mis emisoras</div>' + favs.map(s => `
+    <div class="item" data-uuid="${s.id}">
+      <div class="text">
+        <div class="name"><span class="live-badge">EN VIVO</span>${escapeHtml(s.name)}</div>
+        <div class="sub">${escapeHtml(s.sub || 'Radio')}</div>
+      </div>
+      <div class="actions">
+        <button class="icon-btn play-radio" title="Reproducir">▶</button>
+        <button class="icon-btn del del-fav" title="Quitar">×</button>
+      </div>
+    </div>
+  `).join('');
+  radioFavSection.querySelectorAll('.item').forEach(el => {
+    const uuid = el.dataset.uuid;
+    const fav = favs.find(f => f.id === uuid);
+    el.querySelector('.play-radio').onclick = () => playRadio({ stationuuid: fav.id, name: fav.name, url_resolved: fav.url, country: fav.sub });
+    el.querySelector('.del-fav').onclick = async () => {
+      await idbDel('radios', uuid);
+      renderRadioFavorites();
+    };
+  });
+}
+
+async function toggleFavRadio(s, btn) {
+  const favs = await getFavRadios();
+  const exists = favs.find(f => f.id === s.stationuuid);
+  if (exists) {
+    await idbDel('radios', s.stationuuid);
+    btn.classList.remove('saved');
+  } else {
+    const country = s.country || '';
+    const tags = (s.tags || '').split(',').slice(0, 2).filter(Boolean).join(', ');
+    await idbPut('radios', {
+      id: s.stationuuid, name: s.name.trim(),
+      url: s.url_resolved, sub: [country, tags].filter(Boolean).join(' · ')
+    });
+    btn.classList.add('saved');
+  }
+  renderRadioFavorites();
+}
+
+async function playRadio(s) {
+  audio.src = s.url_resolved;
+  trackTitle.textContent = s.name.trim();
+  trackInfo.textContent = (s.country || 'Radio') + ' · EN VIVO';
+  currentQueue = []; currentIndex = -1;
+  durationEl.textContent = 'LIVE';
+  try {
+    await audio.play();
+    radioStatus.textContent = 'Reproduciendo: ' + s.name.trim();
+  } catch (err) {
+    radioStatus.textContent = 'No se pudo reproducir esta emisora';
+  }
+}
+
+radioBtn.onclick = () => searchRadio(radioInput.value.trim());
+radioInput.onkeydown = e => { if (e.key === 'Enter') radioBtn.click(); };
 
 // ===== Init =====
 (async () => {
@@ -810,7 +1075,12 @@ searchInput.onkeydown = e => { if (e.key === 'Enter') searchBtn.click(); };
   renderPlaylistTabs();
   renderPlaylist();
   await tryRestoreFolder();
+  await renderRadioFavorites();
 })();
+
+document.querySelector('.tab[data-panel="radio"]').addEventListener('click', () => {
+  if (!radioResults.innerHTML) searchRadio('');
+});
 
 // ===== PWA service worker =====
 if ('serviceWorker' in navigator) {
