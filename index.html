@@ -250,6 +250,18 @@
   }
   .modal .row { display: flex; gap: 8px; }
   .modal .row .btn { flex: 1; }
+  .visualizer {
+    width: 100%; height: 56px;
+    margin: 6px 0 10px;
+    display: block; border-radius: 6px;
+  }
+  .library-actions {
+    display: flex; gap: 6px; flex-wrap: wrap;
+    margin-top: 14px; padding-top: 12px;
+    border-top: 1px solid rgba(255,255,255,0.08);
+  }
+  .library-actions .btn { flex: 1; min-width: 90px; font-size: 11px; }
+  body.light .library-actions { border-top-color: rgba(0,0,0,0.08); }
   .progress-dl {
     height: 3px; background: rgba(255,255,255,0.1);
     border-radius: 2px; margin-top: 4px; overflow: hidden;
@@ -357,6 +369,7 @@
       <div class="track-info" id="track-info">Carga música para empezar</div>
       <button class="lyrics-link" id="lyrics-btn" style="display:none">📃 Ver letras</button>
     </div>
+    <canvas id="visualizer" class="visualizer"></canvas>
     <div class="progress-bar" id="progress-bar">
       <div class="progress-fill" id="progress-fill"></div>
     </div>
@@ -387,6 +400,12 @@
       <div class="playlist-tabs" id="playlist-tabs"></div>
       <button class="btn btn-small btn-ghost" id="new-playlist-btn" style="margin-bottom:10px">＋ Nueva lista</button>
       <div class="playlist" id="playlist"></div>
+      <div class="library-actions">
+        <button class="btn btn-small btn-ghost" id="export-meta-btn" title="Solo listas y emisoras (pequeño)">📤 Exportar listas</button>
+        <button class="btn btn-small btn-ghost" id="export-all-btn" title="Listas + canciones descargadas (grande)">📤 Exportar todo</button>
+        <button class="btn btn-small btn-ghost" id="import-btn">📥 Importar</button>
+        <input type="file" id="import-file" accept=".json" style="display:none">
+      </div>
     </div>
 
     <div class="panel" id="panel-search">
@@ -1270,6 +1289,187 @@ radioCountry.onchange = () => searchRadio(radioInput.value.trim());
 document.querySelector('.tab[data-panel="radio"]').addEventListener('click', () => {
   if (!radioResults.innerHTML) searchRadio('');
 });
+
+// ===== Visualizador =====
+const visualizer = document.getElementById('visualizer');
+const vCtx = visualizer.getContext('2d');
+let audioCtx, analyser, sourceNode, vRAF;
+
+function resizeVisualizer() {
+  visualizer.width = visualizer.clientWidth;
+  visualizer.height = visualizer.clientHeight;
+}
+
+function ensureAudioCtx() {
+  if (audioCtx) return true;
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 128;
+    analyser.smoothingTimeConstant = 0.75;
+    sourceNode = audioCtx.createMediaElementSource(audio);
+    sourceNode.connect(analyser);
+    analyser.connect(audioCtx.destination);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+function drawVisualizer() {
+  if (!analyser) { vRAF = null; return; }
+  vRAF = requestAnimationFrame(drawVisualizer);
+  const len = analyser.frequencyBinCount;
+  const data = new Uint8Array(len);
+  analyser.getByteFrequencyData(data);
+  const w = visualizer.width, h = visualizer.height;
+  vCtx.clearRect(0, 0, w, h);
+  const barW = w / len;
+  for (let i = 0; i < len; i++) {
+    const bh = Math.max(2, (data[i] / 255) * h);
+    const grad = vCtx.createLinearGradient(0, h, 0, 0);
+    grad.addColorStop(0, '#a78bfa');
+    grad.addColorStop(1, '#ec4899');
+    vCtx.fillStyle = grad;
+    vCtx.fillRect(i * barW, h - bh, barW - 1, bh);
+  }
+}
+
+function clearVisualizer() {
+  vCtx.clearRect(0, 0, visualizer.width, visualizer.height);
+}
+
+audio.addEventListener('play', () => {
+  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  if (ensureAudioCtx()) {
+    resizeVisualizer();
+    if (!vRAF) drawVisualizer();
+  }
+});
+audio.addEventListener('pause', () => {
+  if (vRAF) { cancelAnimationFrame(vRAF); vRAF = null; }
+});
+audio.addEventListener('ended', () => {
+  if (vRAF) { cancelAnimationFrame(vRAF); vRAF = null; }
+  setTimeout(clearVisualizer, 100);
+});
+window.addEventListener('resize', resizeVisualizer);
+setTimeout(resizeVisualizer, 50);
+
+// ===== Exportar / Importar =====
+function blobToBase64(blob) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result);
+    r.onerror = rej;
+    r.readAsDataURL(blob);
+  });
+}
+
+async function dataUrlToBlob(dataUrl) {
+  const r = await fetch(dataUrl);
+  return await r.blob();
+}
+
+function downloadJSON(data, filename) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function exportData(includeAudio) {
+  const tracks = await idbAll('tracks');
+  const pls = await idbAll('playlists');
+  const radios = await idbAll('radios');
+  const status = document.getElementById('export-meta-btn');
+  const orig = includeAudio ? document.getElementById('export-all-btn').textContent : status.textContent;
+
+  if (includeAudio) document.getElementById('export-all-btn').textContent = 'Empaquetando...';
+  else status.textContent = 'Exportando...';
+
+  const data = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    playlists: pls,
+    radios,
+    tracks: []
+  };
+
+  if (includeAudio) {
+    for (const t of tracks) {
+      data.tracks.push({
+        id: t.id, name: t.name, artist: t.artist, source: t.source,
+        audio: await blobToBase64(t.blob), mime: t.blob.type || 'audio/mpeg'
+      });
+    }
+  } else {
+    data.tracks = tracks.map(t => ({
+      id: t.id, name: t.name, artist: t.artist, source: t.source
+    }));
+  }
+
+  const tag = includeAudio ? 'completo' : 'listas';
+  const date = new Date().toISOString().slice(0, 10);
+  downloadJSON(data, `reproductor-${tag}-${date}.json`);
+
+  if (includeAudio) document.getElementById('export-all-btn').textContent = orig;
+  else status.textContent = orig;
+}
+
+async function importData(file) {
+  const importBtn = document.getElementById('import-btn');
+  const orig = importBtn.textContent;
+  importBtn.textContent = 'Importando...';
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text);
+    if (!data.version) throw new Error('Archivo no válido');
+
+    let restored = 0;
+    if (Array.isArray(data.tracks)) {
+      for (const t of data.tracks) {
+        if (!t.audio) continue;
+        const blob = await dataUrlToBlob(t.audio);
+        await idbPut('tracks', {
+          id: t.id, name: t.name, artist: t.artist,
+          source: t.source, blob
+        });
+        restored++;
+      }
+    }
+    for (const p of data.playlists || []) await idbPut('playlists', p);
+    for (const r of data.radios || []) await idbPut('radios', r);
+
+    await loadAllTracks();
+    await loadPlaylists();
+    renderPlaylistTabs();
+    renderPlaylist();
+    await renderRadioFavorites();
+
+    alert(`Importado: ${data.playlists?.length || 0} listas, ${restored} canciones, ${data.radios?.length || 0} emisoras`);
+  } catch (err) {
+    alert('Error al importar: ' + err.message);
+  }
+  importBtn.textContent = orig;
+}
+
+document.getElementById('export-meta-btn').onclick = () => exportData(false);
+document.getElementById('export-all-btn').onclick = async () => {
+  const tracks = await idbAll('tracks');
+  const total = tracks.reduce((s, t) => s + (t.blob?.size || 0), 0);
+  const mb = (total / 1024 / 1024).toFixed(1);
+  if (tracks.length > 0 && !confirm(`Vas a exportar ${tracks.length} canciones (~${mb} MB). ¿Continuar?`)) return;
+  exportData(true);
+};
+document.getElementById('import-btn').onclick = () => document.getElementById('import-file').click();
+document.getElementById('import-file').onchange = e => {
+  if (e.target.files[0]) importData(e.target.files[0]);
+  e.target.value = '';
+};
 
 // ===== Theme toggle =====
 const themeBtn = document.getElementById('theme-toggle');
