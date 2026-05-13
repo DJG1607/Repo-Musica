@@ -318,8 +318,28 @@
     </div>
 
     <div class="panel" id="panel-radio">
+      <div class="source-selector">
+        <label>País:</label>
+        <select id="radio-country">
+          <option value="ES" selected>España</option>
+          <option value="MX">México</option>
+          <option value="AR">Argentina</option>
+          <option value="CO">Colombia</option>
+          <option value="CL">Chile</option>
+          <option value="PE">Perú</option>
+          <option value="VE">Venezuela</option>
+          <option value="US">Estados Unidos</option>
+          <option value="GB">Reino Unido</option>
+          <option value="FR">Francia</option>
+          <option value="DE">Alemania</option>
+          <option value="IT">Italia</option>
+          <option value="PT">Portugal</option>
+          <option value="BR">Brasil</option>
+          <option value="">🌍 Todos los países</option>
+        </select>
+      </div>
       <div class="search-bar">
-        <input type="text" id="radio-search-input" placeholder="Emisora, género, país (vacío = populares)">
+        <input type="text" id="radio-search-input" placeholder="Emisora o género (vacío = todas)">
         <button class="btn" id="radio-search-btn">Buscar</button>
       </div>
       <div class="status" id="radio-status">Miles de emisoras desde Radio Browser</div>
@@ -437,6 +457,7 @@ const resultsEl = document.getElementById('results');
 const searchSource = document.getElementById('search-source');
 const radioInput = document.getElementById('radio-search-input');
 const radioBtn = document.getElementById('radio-search-btn');
+const radioCountry = document.getElementById('radio-country');
 const radioStatus = document.getElementById('radio-status');
 const radioResults = document.getElementById('radio-results');
 const radioFavSection = document.getElementById('radio-favorites-section');
@@ -998,20 +1019,44 @@ async function downloadAudius(el, host, t) {
 const RADIO_API = 'https://de1.api.radio-browser.info';
 
 async function searchRadio(query) {
-  radioStatus.textContent = query ? 'Buscando emisoras...' : 'Cargando populares...';
+  const country = radioCountry.value;
+  const countryLabel = radioCountry.options[radioCountry.selectedIndex].text.replace('🌍 ', '');
+  radioStatus.textContent = query ? `Buscando "${query}" en ${countryLabel}...` : `Cargando ${countryLabel}...`;
   radioResults.innerHTML = '';
   try {
-    const url = query
-      ? `${RADIO_API}/json/stations/search?name=${encodeURIComponent(query)}&limit=40&hidebroken=true&order=clickcount&reverse=true&is_https=true`
-      : `${RADIO_API}/json/stations/topclick/40?hidebroken=true`;
+    const params = new URLSearchParams({
+      limit: '100',
+      hidebroken: 'true',
+      order: 'clickcount',
+      reverse: 'true',
+      is_https: 'true'
+    });
+    if (query) params.set('name', query);
+    if (country) params.set('countrycode', country);
+
+    const url = `${RADIO_API}/json/stations/search?${params}`;
     const res = await fetch(url);
     let stations = await res.json();
     stations = stations.filter(s => s.url_resolved && s.url_resolved.startsWith('https://'));
+
+    // Si filtro por país no devuelve nada con query, intentar sin país
+    if (stations.length === 0 && country && query) {
+      params.delete('countrycode');
+      const res2 = await fetch(`${RADIO_API}/json/stations/search?${params}`);
+      let s2 = await res2.json();
+      stations = s2.filter(s => s.url_resolved && s.url_resolved.startsWith('https://'));
+      if (stations.length > 0) {
+        radioStatus.textContent = `${stations.length} emisoras (sin filtro de país)`;
+        renderRadioResults(stations);
+        return;
+      }
+    }
+
     if (stations.length === 0) {
-      radioStatus.textContent = 'Sin resultados con HTTPS. Prueba otra búsqueda.';
+      radioStatus.textContent = 'Sin resultados. Prueba otra búsqueda o país.';
       return;
     }
-    radioStatus.textContent = stations.length + ' emisoras';
+    radioStatus.textContent = `${stations.length} emisoras de ${countryLabel}`;
     renderRadioResults(stations);
   } catch (err) {
     radioStatus.textContent = 'Error: ' + err.message;
@@ -1111,6 +1156,7 @@ async function playRadio(s) {
 
 radioBtn.onclick = () => searchRadio(radioInput.value.trim());
 radioInput.onkeydown = e => { if (e.key === 'Enter') radioBtn.click(); };
+radioCountry.onchange = () => searchRadio(radioInput.value.trim());
 
 // ===== Init =====
 (async () => {
