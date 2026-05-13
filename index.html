@@ -259,15 +259,103 @@
     background: linear-gradient(90deg, #a78bfa, #ec4899);
     width: 0%; transition: width 0.2s;
   }
+  .header-row {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 18px;
+  }
+  .header-row h1 { margin: 0; flex: 1; text-align: center; }
+  .theme-btn {
+    background: rgba(255,255,255,0.1); border: none; color: #fff;
+    width: 32px; height: 32px; border-radius: 50%;
+    cursor: pointer; font-size: 14px;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.2s;
+  }
+  .theme-btn:hover { background: rgba(255,255,255,0.2); transform: scale(1.05); }
+  .lyrics-link {
+    background: none; border: none; color: #a78bfa;
+    font-size: 11px; cursor: pointer; margin-top: 4px;
+    padding: 2px 8px;
+  }
+  .lyrics-link:hover { text-decoration: underline; }
+  .lyrics-content {
+    white-space: pre-wrap; line-height: 1.55;
+    max-height: 55vh; overflow-y: auto;
+    font-size: 13px; text-align: left;
+    padding: 4px;
+    color: rgba(255,255,255,0.9);
+  }
+  .lyrics-content::-webkit-scrollbar { width: 6px; }
+  .lyrics-content::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.2); border-radius: 3px;
+  }
+
+  /* ===== Modo claro ===== */
+  body.light {
+    background: linear-gradient(135deg, #ede9fe 0%, #fce7f3 100%);
+    color: #1e1e2e;
+  }
+  body.light .app {
+    background: rgba(255,255,255,0.55);
+    border-color: rgba(0,0,0,0.08);
+    box-shadow: 0 20px 60px rgba(167,139,250,0.2);
+  }
+  body.light .track-info, body.light .times,
+  body.light .sub, body.light .empty,
+  body.light .source-selector label,
+  body.light .status,
+  body.light .section-title { color: #555; }
+  body.light .tabs { background: rgba(0,0,0,0.05); }
+  body.light .tab { color: #555; }
+  body.light .tab.active { background: rgba(167,139,250,0.3); color: #1e1e2e; }
+  body.light .progress-bar,
+  body.light .volume input[type="range"],
+  body.light .progress-dl { background: rgba(0,0,0,0.08); }
+  body.light .ctrl-btn:not(.play),
+  body.light .icon-btn { background: rgba(0,0,0,0.06); color: #1e1e2e; }
+  body.light .ctrl-btn:not(.play):hover,
+  body.light .icon-btn:hover { background: rgba(167,139,250,0.2); }
+  body.light .item { background: rgba(0,0,0,0.03); }
+  body.light .item:hover { background: rgba(167,139,250,0.1); }
+  body.light .item.playing { background: rgba(167,139,250,0.2); }
+  body.light .item.playing .name { color: #5b21b6; }
+  body.light .source-selector select,
+  body.light .search-bar input,
+  body.light .modal input {
+    background: rgba(255,255,255,0.7);
+    color: #1e1e2e; border-color: rgba(0,0,0,0.1);
+  }
+  body.light .modal { background: #f9f7ff; color: #1e1e2e; }
+  body.light .info-box { background: rgba(167,139,250,0.18); color: #4c1d95; border-color: rgba(167,139,250,0.4); }
+  body.light .drop-zone { border-color: rgba(0,0,0,0.15); color: #555; }
+  body.light .drop-zone:hover, body.light .drop-zone.dragging {
+    border-color: #a78bfa; background: rgba(167,139,250,0.1); color: #1e1e2e;
+  }
+  body.light .pl-tab { background: rgba(0,0,0,0.06); color: #555; }
+  body.light .pl-tab.active { background: rgba(167,139,250,0.3); color: #1e1e2e; }
+  body.light .pick-list button {
+    background: rgba(0,0,0,0.04); color: #1e1e2e;
+    border-color: rgba(0,0,0,0.08);
+  }
+  body.light .pick-list button:hover { background: rgba(167,139,250,0.15); }
+  body.light .theme-btn { background: rgba(0,0,0,0.08); color: #1e1e2e; }
+  body.light .btn-ghost { background: rgba(0,0,0,0.06); color: #1e1e2e; }
+  body.light .lyrics-content { color: rgba(0,0,0,0.85); }
+  body.light .info-box code { background: rgba(0,0,0,0.08); color: #1e1e2e; }
 </style>
 </head>
 <body>
   <div class="app">
-    <h1>♪ Mi Reproductor</h1>
+    <div class="header-row">
+      <div style="width:32px"></div>
+      <h1>♪ Mi Reproductor</h1>
+      <button class="theme-btn" id="theme-toggle" title="Cambiar tema">🌙</button>
+    </div>
 
     <div class="now-playing">
       <div class="track-title" id="track-title">Sin reproducir</div>
       <div class="track-info" id="track-info">Carga música para empezar</div>
+      <button class="lyrics-link" id="lyrics-btn" style="display:none">📃 Ver letras</button>
     </div>
     <div class="progress-bar" id="progress-bar">
       <div class="progress-fill" id="progress-fill"></div>
@@ -371,6 +459,16 @@
       <div class="row">
         <button class="btn btn-ghost" id="modal-cancel">Cancelar</button>
         <button class="btn" id="modal-ok">Crear</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-bg" id="lyrics-bg">
+    <div class="modal" style="max-width:500px">
+      <h3 id="lyrics-title">Letras</h3>
+      <div class="lyrics-content" id="lyrics-content">Cargando...</div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn" id="lyrics-close">Cerrar</button>
       </div>
     </div>
   </div>
@@ -1172,6 +1270,131 @@ radioCountry.onchange = () => searchRadio(radioInput.value.trim());
 document.querySelector('.tab[data-panel="radio"]').addEventListener('click', () => {
   if (!radioResults.innerHTML) searchRadio('');
 });
+
+// ===== Theme toggle =====
+const themeBtn = document.getElementById('theme-toggle');
+function applyTheme(t) {
+  document.body.classList.toggle('light', t === 'light');
+  themeBtn.textContent = t === 'light' ? '☀️' : '🌙';
+  localStorage.setItem('theme', t);
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.content = t === 'light' ? '#ede9fe' : '#2d1b4e';
+}
+themeBtn.onclick = () => applyTheme(document.body.classList.contains('light') ? 'dark' : 'light');
+applyTheme(localStorage.getItem('theme') || 'dark');
+
+// ===== Media Session (controles desde pantalla bloqueada) =====
+function setMediaMetadata(t, isLive) {
+  if (!('mediaSession' in navigator)) return;
+  const base = location.href.replace(/[^/]*$/, '');
+  navigator.mediaSession.metadata = new MediaMetadata({
+    title: t.name || 'Sin título',
+    artist: t.artist || (isLive ? 'Radio en vivo' : 'Mi Reproductor'),
+    album: isLive ? 'Radio' : 'Mi Reproductor',
+    artwork: [
+      { src: base + 'icon-192.png', sizes: '192x192', type: 'image/png' },
+      { src: base + 'icon-512.png', sizes: '512x512', type: 'image/png' }
+    ]
+  });
+}
+
+if ('mediaSession' in navigator) {
+  navigator.mediaSession.setActionHandler('play', () => audio.play());
+  navigator.mediaSession.setActionHandler('pause', () => audio.pause());
+  navigator.mediaSession.setActionHandler('previoustrack', () => prevTrack());
+  navigator.mediaSession.setActionHandler('nexttrack', () => nextTrack());
+  try {
+    navigator.mediaSession.setActionHandler('seekto', e => {
+      if (e.seekTime != null && isFinite(audio.duration)) audio.currentTime = e.seekTime;
+    });
+  } catch {}
+}
+
+audio.addEventListener('play', () => {
+  if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
+});
+audio.addEventListener('pause', () => {
+  if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+});
+
+// Engancho a playCurrent, previewArchive, previewAudius, playRadio
+const _origPlayCurrent = playCurrent;
+playCurrent = async function() {
+  await _origPlayCurrent.apply(this, arguments);
+  const id = currentQueue[currentIndex];
+  const t = allTracks.find(x => x.id === id);
+  if (t) setMediaMetadata(t, false);
+  showLyricsButton(t);
+};
+
+const _origPreviewArchive = previewArchive;
+previewArchive = async function(id, title, artist) {
+  await _origPreviewArchive.call(this, id, title, artist);
+  setMediaMetadata({ name: title, artist }, false);
+  showLyricsButton({ name: title, artist });
+};
+
+const _origPreviewAudius = previewAudius;
+previewAudius = async function(host, t) {
+  await _origPreviewAudius.call(this, host, t);
+  setMediaMetadata({ name: t.title, artist: t.user?.name }, false);
+  showLyricsButton({ name: t.title, artist: t.user?.name });
+};
+
+const _origPlayRadio = playRadio;
+playRadio = async function(s) {
+  await _origPlayRadio.call(this, s);
+  setMediaMetadata({ name: s.name.trim(), artist: s.country || 'Radio' }, true);
+  document.getElementById('lyrics-btn').style.display = 'none';
+};
+
+// ===== Letras (lyrics.ovh) =====
+const lyricsBtn = document.getElementById('lyrics-btn');
+const lyricsBg = document.getElementById('lyrics-bg');
+const lyricsTitle = document.getElementById('lyrics-title');
+const lyricsContent = document.getElementById('lyrics-content');
+document.getElementById('lyrics-close').onclick = () => lyricsBg.classList.remove('show');
+lyricsBg.onclick = e => { if (e.target === lyricsBg) lyricsBg.classList.remove('show'); };
+
+function parseArtistTitle(t) {
+  let artist = t.artist || '';
+  let title = t.name || '';
+  if (!artist) {
+    const m = title.match(/^(.+?)\s*-\s*(.+)$/);
+    if (m) { artist = m[1].trim(); title = m[2].trim(); }
+  }
+  title = title.replace(/\s*\(.*?\)\s*/g, '').replace(/\s*\[.*?\]\s*/g, '').trim();
+  title = title.replace(/\s*-?\s*(official|video|audio|lyrics|hd|hq|remastered).*$/i, '').trim();
+  return { artist, title };
+}
+
+async function fetchLyrics(artist, title) {
+  try {
+    const r = await fetch(`https://api.lyrics.ovh/v1/${encodeURIComponent(artist)}/${encodeURIComponent(title)}`);
+    if (!r.ok) return null;
+    const data = await r.json();
+    return data.lyrics && data.lyrics.trim() ? data.lyrics : null;
+  } catch { return null; }
+}
+
+function showLyricsButton(t) {
+  if (!t) { lyricsBtn.style.display = 'none'; return; }
+  lyricsBtn.style.display = '';
+  lyricsBtn.onclick = () => openLyrics(t);
+}
+
+async function openLyrics(t) {
+  const { artist, title } = parseArtistTitle(t);
+  lyricsTitle.textContent = title || t.name;
+  lyricsContent.textContent = 'Buscando letras...';
+  lyricsBg.classList.add('show');
+  if (!artist) {
+    lyricsContent.textContent = 'No se encontró el artista.\n\nPara que funcione, el archivo debe tener formato "Artista - Canción", o ser una pista descargada con artista identificado.';
+    return;
+  }
+  const lyrics = await fetchLyrics(artist, title);
+  lyricsContent.textContent = lyrics || `No se encontraron letras para:\n\n${artist} - ${title}\n\nA veces el título tiene variantes que la API no reconoce. Prueba editando el nombre del archivo.`;
+}
 
 // ===== PWA service worker =====
 if ('serviceWorker' in navigator) {
