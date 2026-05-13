@@ -83,12 +83,28 @@
   .ctrl-btn.active { color: #a78bfa; }
   .volume { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
   .volume input[type="range"] {
-    flex: 1; -webkit-appearance: none; height: 4px;
+    flex: 1; -webkit-appearance: none; appearance: none; height: 4px;
     background: rgba(255, 255, 255, 0.1); border-radius: 2px; outline: none;
   }
   .volume input[type="range"]::-webkit-slider-thumb {
     -webkit-appearance: none; width: 14px; height: 14px;
     background: #a78bfa; border-radius: 50%; cursor: pointer;
+  }
+  .volume input[type="range"]::-moz-range-thumb {
+    width: 14px; height: 14px;
+    background: #a78bfa; border-radius: 50%; cursor: pointer; border: none;
+  }
+  .pick-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+  .pick-list button {
+    padding: 10px 12px; text-align: left;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 8px; color: #fff;
+    cursor: pointer; font-size: 13px;
+  }
+  .pick-list button:hover {
+    background: rgba(167,139,250,0.2);
+    border-color: rgba(167,139,250,0.4);
   }
   .source-selector {
     display: flex; align-items: center; gap: 8px;
@@ -331,6 +347,7 @@
     <div class="modal">
       <h3 id="modal-title">Nueva lista</h3>
       <input type="text" id="modal-input" placeholder="Nombre de la lista">
+      <div class="pick-list" id="modal-pick-list" style="display:none"></div>
       <div class="row">
         <button class="btn btn-ghost" id="modal-cancel">Cancelar</button>
         <button class="btn" id="modal-ok">Crear</button>
@@ -448,6 +465,10 @@ function showModal(title, placeholder, onOk) {
   document.getElementById('modal-title').textContent = title;
   modalInput.placeholder = placeholder;
   modalInput.value = '';
+  modalInput.style.display = '';
+  document.getElementById('modal-pick-list').style.display = 'none';
+  modalOk.style.display = '';
+  modalOk.textContent = 'Crear';
   modalBg.classList.add('show');
   modalInput.focus();
   modalOk.onclick = () => {
@@ -456,6 +477,23 @@ function showModal(title, placeholder, onOk) {
   };
   modalInput.onkeydown = e => { if (e.key === 'Enter') modalOk.click(); };
 }
+
+function showPickModal(title, options, onPick) {
+  document.getElementById('modal-title').textContent = title;
+  modalInput.style.display = 'none';
+  modalOk.style.display = 'none';
+  const list = document.getElementById('modal-pick-list');
+  list.style.display = 'flex';
+  list.innerHTML = options.map((o, i) => `<button data-i="${i}">${escapeHtml(o.label)}</button>`).join('');
+  list.querySelectorAll('button').forEach(b => {
+    b.onclick = () => {
+      modalBg.classList.remove('show');
+      onPick(options[parseInt(b.dataset.i)]);
+    };
+  });
+  modalBg.classList.add('show');
+}
+
 modalCancel.onclick = () => modalBg.classList.remove('show');
 
 // ===== Tabs =====
@@ -511,9 +549,10 @@ async function removeFromPlaylist(trackId, playlistId) {
 }
 
 function renderPlaylistTabs() {
+  const showDel = playlists.length > 1;
   plTabs.innerHTML = playlists.map(p => `
     <button class="pl-tab ${p.id === currentPlaylistId ? 'active' : ''}" data-id="${p.id}">
-      ${escapeHtml(p.name)} <span class="x" data-del="${p.id}">${playlists.length > 1 ? '×' : ''}</span>
+      ${escapeHtml(p.name)}${showDel ? ` <span class="x" data-del="${p.id}">×</span>` : ''}
     </button>
   `).join('');
   plTabs.querySelectorAll('.pl-tab').forEach(el => {
@@ -578,13 +617,19 @@ function renderPlaylist() {
 
 function addToOtherPlaylist(trackId) {
   const others = playlists.filter(p => p.id !== currentPlaylistId);
-  if (others.length === 0) { alert('Crea otra lista primero'); return; }
-  const choice = prompt('Añadir a qué lista?\n' + others.map((p, i) => `${i+1}. ${p.name}`).join('\n') + '\n\nEscribe el número:');
-  const i = parseInt(choice) - 1;
-  if (others[i]) {
-    addToPlaylist(trackId, others[i].id);
-    alert('Añadido a "' + others[i].name + '"');
+  if (others.length === 0) {
+    showModal('Sin listas disponibles', 'Nombre de nueva lista', async name => {
+      const p = { id: uid(), name, trackIds: [trackId] };
+      playlists.push(p);
+      await savePlaylist(p);
+      renderPlaylistTabs();
+    });
+    return;
   }
+  const opts = others.map(p => ({ label: p.name, id: p.id }));
+  showPickModal('Añadir a qué lista?', opts, opt => {
+    addToPlaylist(trackId, opt.id);
+  });
 }
 
 newPlBtn.onclick = () => {
