@@ -814,6 +814,7 @@
           <select id="search-source">
             <option value="archive">Internet Archive</option>
             <option value="audius">Audius (indie)</option>
+            <option value="soundcloud">SoundCloud</option>
           </select>
         </div>
         <div class="search-bar">
@@ -964,6 +965,16 @@
         <button class="btn btn-ghost" id="modal-cancel">Cancelar</button>
         <button class="btn" id="modal-ok">Crear</button>
       </div>
+    </div>
+  </div>
+
+  <div class="modal-bg" id="sc-modal">
+    <div class="modal" style="max-width:520px; padding:0; overflow:hidden">
+      <div style="padding:12px 16px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border)">
+        <div style="font-size:14px; font-weight:600; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding-right:10px" id="sc-title">SoundCloud</div>
+        <button class="icon-btn-flat" id="sc-close" style="flex-shrink:0">×</button>
+      </div>
+      <div id="sc-player-container" style="height:180px; background:#000; width:100%"></div>
     </div>
   </div>
 
@@ -2167,9 +2178,89 @@ searchBtn.onclick = () => {
   if (!q) return;
   const src = searchSource.value;
   if (src === 'audius') searchAudius(q);
+  else if (src === 'soundcloud') searchSoundCloud(q);
   else searchArchive(q);
 };
 searchInput.onkeydown = e => { if (e.key === 'Enter') searchBtn.click(); };
+searchSource.onchange = () => {
+  if (searchSource.value === 'soundcloud') {
+    searchInput.placeholder = 'Búsqueda o URL de SoundCloud';
+  } else {
+    searchInput.placeholder = 'Buscar canción, artista...';
+  }
+};
+
+// ============================================================
+// SoundCloud (search via API + widget playback)
+// ============================================================
+// Public client_id usado por la web de SoundCloud. Si rota, la búsqueda fallará
+// y el usuario podrá pegar URLs directas (que siempre funcionan).
+const SC_CLIENT_ID = 'iZIs9mchVcX5lhVRyQGGAYlNPVldzAoX';
+
+async function searchSoundCloud(query) {
+  // Si es una URL, reproducirla directamente
+  if (/^https?:\/\/(www\.)?(soundcloud\.com|m\.soundcloud\.com|on\.soundcloud\.com)\//i.test(query)) {
+    playSoundCloud(query, query.split('/').slice(-1)[0].replace(/[-_]/g, ' '));
+    searchStatus.textContent = '▶ Reproduciendo desde URL';
+    return;
+  }
+
+  searchStatus.textContent = 'Buscando en SoundCloud...';
+  resultsEl.innerHTML = '';
+  try {
+    const url = `https://api-v2.soundcloud.com/search/tracks?q=${encodeURIComponent(query)}&client_id=${SC_CLIENT_ID}&limit=25`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      searchStatus.textContent = '⚠ La búsqueda de SoundCloud no está disponible ahora mismo. Pega una URL de un track de SoundCloud en su lugar.';
+      return;
+    }
+    const data = await res.json();
+    const tracks = (data.collection || []).filter(t => t.permalink_url);
+    if (tracks.length === 0) { searchStatus.textContent = 'Sin resultados'; return; }
+    searchStatus.textContent = tracks.length + ' resultados de SoundCloud';
+    resultsEl.innerHTML = tracks.map(t => {
+      const thumb = t.artwork_url ? t.artwork_url.replace('-large', '-t200x200') : '';
+      const artist = t.user?.username || 'SoundCloud';
+      return `
+        <div class="item" data-url="${escapeHtml(t.permalink_url)}">
+          <div class="item-art">${thumb ? `<img src="${escapeHtml(thumb)}" alt="" loading="lazy">` : '☁'}</div>
+          <div class="text">
+            <div class="name">${escapeHtml(t.title)}</div>
+            <div class="sub">${escapeHtml(artist)}</div>
+          </div>
+          <div class="actions">
+            <button class="icon-btn play-sc" title="Reproducir">▶</button>
+          </div>
+        </div>`;
+    }).join('');
+    resultsEl.querySelectorAll('.item').forEach(el => {
+      const url = el.dataset.url;
+      const title = el.querySelector('.name').textContent;
+      el.querySelector('.play-sc').onclick = () => playSoundCloud(url, title);
+    });
+  } catch (err) {
+    searchStatus.textContent = '⚠ ' + err.message + '. Prueba pegando una URL.';
+  }
+}
+
+function playSoundCloud(url, title) {
+  try { activeAudio.pause(); } catch {}
+  $('sc-title').textContent = title;
+  const embedUrl = `https://w.soundcloud.com/player/?url=${encodeURIComponent(url)}&auto_play=true&color=%23a78bfa&show_user=true&hide_related=true&visual=false`;
+  $('sc-player-container').innerHTML =
+    `<iframe src="${embedUrl}" style="width:100%; height:100%; border:none" allow="autoplay"></iframe>`;
+  $('sc-modal').classList.add('show');
+}
+$('sc-close').onclick = () => {
+  $('sc-modal').classList.remove('show');
+  $('sc-player-container').innerHTML = '';
+};
+$('sc-modal').onclick = e => {
+  if (e.target === $('sc-modal')) {
+    $('sc-modal').classList.remove('show');
+    $('sc-player-container').innerHTML = '';
+  }
+};
 
 // ============================================================
 // Import from URL (direct media URL)
