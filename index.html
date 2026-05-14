@@ -814,6 +814,7 @@
           <select id="search-source">
             <option value="archive">Internet Archive</option>
             <option value="audius">Audius (indie)</option>
+            <option value="youtube">YouTube (embebido)</option>
           </select>
         </div>
         <div class="search-bar">
@@ -867,8 +868,17 @@
           <strong>📥 Arrastra archivos aquí</strong><br>
           <span style="font-size:11px">o haz clic para elegir</span>
         </label>
-        <input type="file" id="file-input" accept="audio/*,.mp3,.wav,.ogg,.m4a,.flac,.aac,.opus" multiple>
+        <input type="file" id="file-input" accept="audio/*,video/mp4,.mp3,.wav,.ogg,.m4a,.flac,.aac,.opus,.mp4" multiple>
         <div class="status" id="upload-status"></div>
+
+        <div style="margin-top:18px; padding-top:14px; border-top:1px solid var(--border)">
+          <div class="section-title">Importar desde URL</div>
+          <div class="search-bar">
+            <input type="url" id="url-input" placeholder="https://.../cancion.mp3 o .mp4">
+            <button class="btn" id="url-import-btn">Importar</button>
+          </div>
+          <div class="status" id="url-status">URLs directas de MP3/MP4. YouTube NO funciona (sin CORS).</div>
+        </div>
       </div>
     </div>
 
@@ -954,6 +964,41 @@
       <div class="row">
         <button class="btn btn-ghost" id="modal-cancel">Cancelar</button>
         <button class="btn" id="modal-ok">Crear</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-bg" id="yt-modal">
+    <div class="modal" style="max-width:520px; padding:0; overflow:hidden">
+      <div style="padding:12px 16px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border)">
+        <div style="font-size:14px; font-weight:600; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding-right:10px" id="yt-title">YouTube</div>
+        <button class="icon-btn-flat" id="yt-close" style="flex-shrink:0">×</button>
+      </div>
+      <div id="yt-player-container" style="aspect-ratio:16/9; background:#000; width:100%"></div>
+      <div style="padding:10px 16px; font-size:11px; color:var(--text-mute); text-align:center">
+        ⚠ En móvil con pantalla bloqueada, YouTube pausa el audio (limitación de YouTube)
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-bg" id="yt-key-modal">
+    <div class="modal">
+      <h3>🔑 Configurar YouTube</h3>
+      <p style="font-size:12px; color:var(--text-dim); line-height:1.5; margin-bottom:12px">
+        Para usar la búsqueda de YouTube necesitas una clave de API gratuita de Google. Te doy los pasos:
+      </p>
+      <ol style="font-size:12px; color:var(--text-dim); line-height:1.6; margin-bottom:14px; padding-left:18px">
+        <li>Ve a <a href="https://console.cloud.google.com/apis/library/youtube.googleapis.com" target="_blank" style="color:var(--accent-1)">esta página</a></li>
+        <li>Selecciona tu proyecto <strong>reproduccion-de-musica</strong></li>
+        <li>Pulsa <strong>Habilitar</strong> (Enable)</li>
+        <li>Ve a <a href="https://console.cloud.google.com/apis/credentials" target="_blank" style="color:var(--accent-1)">Credenciales</a></li>
+        <li>Crear credenciales → Clave de API</li>
+        <li>Copia la clave y pégala abajo</li>
+      </ol>
+      <input type="text" id="yt-key-input" placeholder="AIza..." class="input" style="margin-bottom:12px; font-family:monospace; font-size:12px">
+      <div class="row">
+        <button class="btn btn-ghost" id="yt-key-cancel">Cancelar</button>
+        <button class="btn" id="yt-key-save">Guardar</button>
       </div>
     </div>
   </div>
@@ -1109,7 +1154,7 @@ const themeToggle = $('theme-toggle'), themeIcon = $('theme-icon'), themeLabel =
 // ============================================================
 // Utils
 // ============================================================
-const AUDIO_EXT = /\.(mp3|wav|ogg|m4a|flac|aac|opus|wma|webm)$/i;
+const AUDIO_EXT = /\.(mp3|wav|ogg|m4a|flac|aac|opus|wma|webm|mp4)$/i;
 function formatTime(s) {
   if (isNaN(s) || !isFinite(s)) return '0:00';
   const m = Math.floor(s / 60);
@@ -1925,7 +1970,9 @@ function updateSyncedLyrics(t) {
 // Local upload
 // ============================================================
 async function handleFiles(files) {
-  const filtered = Array.from(files).filter(f => f.type.startsWith('audio/') || AUDIO_EXT.test(f.name));
+  const filtered = Array.from(files).filter(f =>
+    f.type.startsWith('audio/') || f.type === 'video/mp4' || AUDIO_EXT.test(f.name)
+  );
   if (filtered.length === 0) {
     uploadStatus.textContent = '⚠ Ningún archivo de audio detectado';
     return;
@@ -2155,9 +2202,143 @@ searchBtn.onclick = () => {
   const q = searchInput.value.trim();
   if (!q) return;
   const src = searchSource.value;
-  if (src === 'audius') searchAudius(q); else searchArchive(q);
+  if (src === 'audius') searchAudius(q);
+  else if (src === 'youtube') searchYouTube(q);
+  else searchArchive(q);
 };
 searchInput.onkeydown = e => { if (e.key === 'Enter') searchBtn.click(); };
+searchSource.onchange = () => {
+  if (searchSource.value === 'youtube' && !localStorage.getItem('ytApiKey')) {
+    openYtKeyModal();
+  }
+};
+
+// ============================================================
+// Import from URL (direct media URL)
+// ============================================================
+$('url-import-btn').onclick = async () => {
+  const url = $('url-input').value.trim();
+  if (!url) return;
+  if (/youtube\.com|youtu\.be/.test(url)) {
+    $('url-status').textContent = '⚠ YouTube no es posible sin backend. Usa la pestaña Buscar > YouTube.';
+    return;
+  }
+  $('url-status').textContent = 'Descargando...';
+  $('url-import-btn').disabled = true;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const blob = await res.blob();
+    if (!blob.type.startsWith('audio/') && !blob.type.startsWith('video/')) {
+      throw new Error('No es un archivo de audio/vídeo');
+    }
+    const filename = decodeURIComponent(url.split('/').pop().split('?')[0]).replace(AUDIO_EXT, '');
+    const m = filename.match(/^(.+?)\s*-\s*(.+)$/);
+    const name = m ? m[2].trim() : filename;
+    const artist = m ? m[1].trim() : '';
+    const id = uid();
+    const track = { id, name, artist, blob, source: 'url' };
+    await saveTrack(track);
+    track.url = URL.createObjectURL(blob);
+    allTracks.push(track);
+    await addToPlaylist(id, currentPlaylistId);
+    renderPlaylist();
+    $('url-status').textContent = '✓ Añadido: ' + name;
+    $('url-input').value = '';
+  } catch (err) {
+    const msg = err.message.includes('Failed to fetch')
+      ? 'CORS bloqueado o URL inaccesible. El servidor de esa URL no permite descargas desde otra web.'
+      : err.message;
+    $('url-status').textContent = '⚠ ' + msg;
+  }
+  $('url-import-btn').disabled = false;
+};
+
+// ============================================================
+// YouTube search + embed playback
+// ============================================================
+function openYtKeyModal() {
+  $('yt-key-input').value = localStorage.getItem('ytApiKey') || '';
+  $('yt-key-modal').classList.add('show');
+}
+$('yt-key-cancel').onclick = () => $('yt-key-modal').classList.remove('show');
+$('yt-key-save').onclick = () => {
+  const key = $('yt-key-input').value.trim();
+  if (key) {
+    localStorage.setItem('ytApiKey', key);
+    $('yt-key-modal').classList.remove('show');
+    searchStatus.textContent = '✓ Clave guardada. Ya puedes buscar en YouTube.';
+  }
+};
+$('yt-key-modal').onclick = e => { if (e.target === $('yt-key-modal')) $('yt-key-modal').classList.remove('show'); };
+
+async function searchYouTube(query) {
+  const key = localStorage.getItem('ytApiKey');
+  if (!key) { openYtKeyModal(); return; }
+  searchStatus.textContent = 'Buscando en YouTube...';
+  resultsEl.innerHTML = '';
+  try {
+    const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&maxResults=25&key=${key}`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      const err = await res.json();
+      if (err.error?.errors?.[0]?.reason === 'quotaExceeded') {
+        searchStatus.textContent = '⚠ Cuota de API agotada (100 búsquedas/día). Espera a mañana.';
+      } else if (err.error?.errors?.[0]?.reason === 'keyInvalid' || res.status === 400) {
+        searchStatus.textContent = '⚠ Clave inválida. Pulsa Buscar para introducirla de nuevo.';
+        localStorage.removeItem('ytApiKey');
+      } else {
+        searchStatus.textContent = '⚠ ' + (err.error?.message || 'Error');
+      }
+      return;
+    }
+    const data = await res.json();
+    const items = data.items || [];
+    if (items.length === 0) { searchStatus.textContent = 'Sin resultados'; return; }
+    searchStatus.textContent = items.length + ' resultados de YouTube';
+    resultsEl.innerHTML = items.map(it => {
+      const vid = it.id.videoId;
+      const sn = it.snippet;
+      const thumb = sn.thumbnails?.medium?.url || sn.thumbnails?.default?.url || '';
+      return `
+        <div class="item" data-vid="${vid}">
+          <div class="item-art">${thumb ? `<img src="${escapeHtml(thumb)}" alt="" loading="lazy">` : '▶'}</div>
+          <div class="text">
+            <div class="name">${escapeHtml(sn.title)}</div>
+            <div class="sub">${escapeHtml(sn.channelTitle)}</div>
+          </div>
+          <div class="actions">
+            <button class="icon-btn play-yt" title="Reproducir">▶</button>
+          </div>
+        </div>`;
+    }).join('');
+    resultsEl.querySelectorAll('.item').forEach(el => {
+      const vid = el.dataset.vid;
+      const title = el.querySelector('.name').textContent;
+      el.querySelector('.play-yt').onclick = () => playYouTube(vid, title);
+    });
+  } catch (err) {
+    searchStatus.textContent = '⚠ Error: ' + err.message;
+  }
+}
+
+function playYouTube(videoId, title) {
+  try { activeAudio.pause(); } catch {}
+  $('yt-title').textContent = title;
+  $('yt-player-container').innerHTML =
+    `<iframe src="https://www.youtube.com/embed/${videoId}?autoplay=1&playsinline=1" style="width:100%; height:100%; border:none" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>`;
+  $('yt-modal').classList.add('show');
+}
+$('yt-close').onclick = () => {
+  $('yt-modal').classList.remove('show');
+  $('yt-player-container').innerHTML = '';
+};
+$('yt-modal').onclick = e => {
+  if (e.target === $('yt-modal')) {
+    $('yt-modal').classList.remove('show');
+    $('yt-player-container').innerHTML = '';
+  }
+};
 
 // ============================================================
 // Radio Browser
