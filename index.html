@@ -635,6 +635,106 @@
     padding: 20px 0;
   }
 
+  /* ===== Auth / Sync ===== */
+  .btn-google {
+    background: white;
+    color: #1a0f2e;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .btn-google:hover { background: #f5f5f5; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+  body.light .btn-google {
+    background: #1a0f2e; color: white;
+    border: 1px solid var(--border);
+  }
+  body.light .btn-google:hover { background: #2d1b4e; }
+  .auth-divider {
+    text-align: center;
+    margin: 16px 0;
+    position: relative;
+    font-size: 11px;
+    color: var(--text-mute);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .auth-divider span { background: var(--bg-3); padding: 0 10px; position: relative; z-index: 1; }
+  body.light .auth-divider span { background: #fff; }
+  .auth-divider::before {
+    content: '';
+    position: absolute;
+    top: 50%; left: 0; right: 0;
+    height: 1px;
+    background: var(--border);
+  }
+  .auth-error {
+    font-size: 12px;
+    color: #fca5a5;
+    margin-top: 10px;
+    min-height: 16px;
+    text-align: center;
+  }
+  body.light .auth-error { color: #dc2626; }
+  .user-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    background: var(--surface-2);
+    border-radius: 12px;
+    margin-bottom: 12px;
+  }
+  .user-avatar {
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    background: var(--accent-grad);
+    color: white;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 18px;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  .user-avatar img { width: 100%; height: 100%; object-fit: cover; }
+  .user-text { flex: 1; min-width: 0; }
+  .user-name {
+    font-weight: 600; font-size: 14px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .user-email {
+    font-size: 12px; color: var(--text-dim); margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .sync-status {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 12px;
+    background: rgba(34,197,94,0.15);
+    border: 1px solid rgba(34,197,94,0.3);
+    border-radius: 10px;
+    font-size: 13px;
+    color: #4ade80;
+  }
+  body.light .sync-status { color: #16a34a; }
+  .sync-status.syncing {
+    background: rgba(167,139,250,0.15);
+    border-color: rgba(167,139,250,0.3);
+    color: var(--accent-1);
+  }
+  .sync-status.error {
+    background: rgba(239,68,68,0.15);
+    border-color: rgba(239,68,68,0.3);
+    color: #fca5a5;
+  }
+  body.light .sync-status.error { color: #dc2626; }
+  .sync-status .spin { display: inline-block; animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #sync-btn .badge {
+    margin-left: auto;
+    background: var(--accent-grad);
+    color: white;
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 999px;
+    font-weight: 700;
+  }
+
   /* ===== Responsive ===== */
   @media (max-width: 480px) {
     body { padding: 12px; padding-bottom: 90px; }
@@ -673,7 +773,7 @@
           <input type="file" id="import-file" accept=".json">
           <div class="menu-sep"></div>
           <div class="menu-label">Cuenta</div>
-          <button id="sync-btn">☁️ Sincronizar dispositivos</button>
+          <button id="sync-btn"><span id="sync-btn-label">☁️ Sincronizar dispositivos</span></button>
         </div>
       </div>
     </div>
@@ -813,6 +913,39 @@
   <audio id="audio"></audio>
   <audio id="audio-stream"></audio>
 
+<script type="module">
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+  import {
+    getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged,
+    createUserWithEmailAndPassword, signInWithEmailAndPassword
+  } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+  import {
+    getFirestore, doc, setDoc, getDoc, deleteDoc, collection, getDocs, onSnapshot
+  } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyDoehL06lp7tYQniOGkX5zJN_y1yrkYprM",
+    authDomain: "reproduccion-de-musica.firebaseapp.com",
+    projectId: "reproduccion-de-musica",
+    storageBucket: "reproduccion-de-musica.firebasestorage.app",
+    messagingSenderId: "20264599763",
+    appId: "1:20264599763:web:7eeb485ad05f72fa96d426",
+    measurementId: "G-V85NS5HP1D"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+
+  window.fb = {
+    auth, db,
+    GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged,
+    createUserWithEmailAndPassword, signInWithEmailAndPassword,
+    doc, setDoc, getDoc, deleteDoc, collection, getDocs, onSnapshot
+  };
+  window.dispatchEvent(new CustomEvent('firebase-ready'));
+</script>
+
   <div class="modal-bg" id="modal-bg">
     <div class="modal">
       <h3 id="modal-title">Nueva lista</h3>
@@ -827,19 +960,46 @@
 
   <div class="modal-bg" id="sync-modal">
     <div class="modal">
-      <h3>☁️ Sincronizar dispositivos</h3>
-      <p style="font-size:13px; color:var(--text-dim); line-height:1.5; margin-bottom:14px">
-        La sincronización en tiempo real requiere configurar Firebase (gratis, 5 min de setup).
-      </p>
-      <p style="font-size:13px; color:var(--text-dim); line-height:1.5; margin-bottom:14px">
-        Mientras tanto, la mejor forma de pasar tu música entre dispositivos es usar
-        <strong>Exportar todo</strong> en este dispositivo e <strong>Importar</strong> en el otro.
-      </p>
-      <p style="font-size:12px; color:var(--text-mute); line-height:1.5; margin-bottom:14px">
-        Si quieres activar Firebase, dímelo y te paso los pasos exactos.
-      </p>
-      <div class="row">
-        <button class="btn btn-block" id="sync-close">Entendido</button>
+      <h3>☁️ Sincronización en la nube</h3>
+      <div id="auth-signed-out">
+        <p style="font-size:13px; color:var(--text-dim); line-height:1.5; margin-bottom:14px">
+          Inicia sesión para que tus listas y emisoras favoritas se sincronicen entre todos tus dispositivos automáticamente.
+        </p>
+        <button class="btn btn-block btn-google" id="login-google">
+          <svg style="width:18px;height:18px;vertical-align:middle;margin-right:8px" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+          Continuar con Google
+        </button>
+        <div class="auth-divider"><span>o con email</span></div>
+        <input type="email" id="login-email" placeholder="tu@email.com" class="input" autocomplete="email" style="margin-bottom:8px">
+        <input type="password" id="login-password" placeholder="Contraseña (mín. 6)" class="input" autocomplete="current-password" style="margin-bottom:10px">
+        <div class="row">
+          <button class="btn btn-ghost" id="login-email-btn">Iniciar sesión</button>
+          <button class="btn" id="signup-email-btn">Crear cuenta</button>
+        </div>
+        <div id="auth-error" class="auth-error"></div>
+      </div>
+      <div id="auth-signed-in" style="display:none">
+        <div class="user-info">
+          <div class="user-avatar" id="user-avatar">G</div>
+          <div class="user-text">
+            <div class="user-name" id="user-name">Usuario</div>
+            <div class="user-email" id="user-email"></div>
+          </div>
+        </div>
+        <div class="sync-status" id="sync-status-info">
+          <span id="sync-status-icon">✓</span>
+          <span id="sync-status-text">Sincronizado</span>
+        </div>
+        <p style="font-size:11px; color:var(--text-mute); margin-top:10px; line-height:1.4">
+          Se sincronizan listas, emisoras y datos de canciones. Para mover los audios MP3 entre dispositivos usa <strong>Exportar / Importar</strong>.
+        </p>
+        <div class="row" style="margin-top:14px; gap:8px">
+          <button class="btn btn-ghost" id="sync-refresh-btn">⟳ Actualizar</button>
+          <button class="btn btn-ghost" id="logout-btn">Cerrar sesión</button>
+        </div>
+      </div>
+      <div class="row" style="margin-top:14px">
+        <button class="btn btn-block" id="sync-close">Cerrar</button>
       </div>
     </div>
   </div>
@@ -1037,6 +1197,282 @@ $('sync-close').onclick = () => $('sync-modal').classList.remove('show');
 $('sync-modal').onclick = e => { if (e.target === $('sync-modal')) $('sync-modal').classList.remove('show'); };
 
 // ============================================================
+// Firebase Sync
+// ============================================================
+let fb = null;
+let currentUser = null;
+let syncUnsubs = [];
+let isApplyingRemote = false; // evita loops cuando llegan cambios de la nube
+
+window.addEventListener('firebase-ready', () => {
+  fb = window.fb;
+  fb.onAuthStateChanged(fb.auth, async user => {
+    currentUser = user;
+    updateAuthUI(user);
+    if (user) {
+      try {
+        setSyncStatus('syncing', 'Sincronizando inicial...');
+        await initialSync(user.uid);
+        startRealtimeSync(user.uid);
+        setSyncStatus('', 'Sincronizado');
+      } catch (err) {
+        console.error('Sync error:', err);
+        setSyncStatus('error', 'Error: ' + (err.code || err.message));
+      }
+    } else {
+      stopRealtimeSync();
+    }
+  });
+
+  $('login-google').onclick = async () => {
+    setAuthError('');
+    try {
+      const provider = new fb.GoogleAuthProvider();
+      await fb.signInWithPopup(fb.auth, provider);
+    } catch (err) { setAuthError(authErrorMsg(err)); }
+  };
+
+  $('login-email-btn').onclick = async () => {
+    setAuthError('');
+    const email = $('login-email').value.trim();
+    const pw = $('login-password').value;
+    if (!email || !pw) { setAuthError('Email y contraseña requeridos'); return; }
+    try { await fb.signInWithEmailAndPassword(fb.auth, email, pw); }
+    catch (err) { setAuthError(authErrorMsg(err)); }
+  };
+
+  $('signup-email-btn').onclick = async () => {
+    setAuthError('');
+    const email = $('login-email').value.trim();
+    const pw = $('login-password').value;
+    if (!email || !pw) { setAuthError('Email y contraseña requeridos'); return; }
+    if (pw.length < 6) { setAuthError('La contraseña debe tener al menos 6 caracteres'); return; }
+    try { await fb.createUserWithEmailAndPassword(fb.auth, email, pw); }
+    catch (err) { setAuthError(authErrorMsg(err)); }
+  };
+
+  $('logout-btn').onclick = async () => {
+    try { await fb.signOut(fb.auth); } catch {}
+  };
+
+  $('sync-refresh-btn').onclick = async () => {
+    if (!currentUser) return;
+    try {
+      setSyncStatus('syncing', 'Actualizando...');
+      await initialSync(currentUser.uid);
+      setSyncStatus('', 'Sincronizado');
+    } catch (err) { setSyncStatus('error', 'Error: ' + err.message); }
+  };
+});
+
+function authErrorMsg(err) {
+  const map = {
+    'auth/invalid-email': 'Email no válido',
+    'auth/user-not-found': 'No existe esa cuenta. Usa "Crear cuenta"',
+    'auth/wrong-password': 'Contraseña incorrecta',
+    'auth/invalid-credential': 'Email o contraseña incorrectos',
+    'auth/email-already-in-use': 'Ese email ya tiene cuenta. Usa "Iniciar sesión"',
+    'auth/weak-password': 'Contraseña demasiado débil (mín. 6 caracteres)',
+    'auth/popup-closed-by-user': 'Cancelado',
+    'auth/popup-blocked': 'El navegador bloqueó la ventana — permite popups',
+    'auth/unauthorized-domain': 'Dominio no autorizado en Firebase. Añade tu dominio en Authentication > Settings'
+  };
+  return map[err.code] || err.message || 'Error desconocido';
+}
+
+function setAuthError(msg) { $('auth-error').textContent = msg; }
+
+function setSyncStatus(state, text) {
+  const el = $('sync-status-info');
+  if (!el) return;
+  el.className = 'sync-status' + (state ? ' ' + state : '');
+  $('sync-status-text').textContent = text;
+  $('sync-status-icon').textContent = state === 'syncing' ? '⟳' : state === 'error' ? '⚠' : '✓';
+  if (state === 'syncing') $('sync-status-icon').classList.add('spin');
+  else $('sync-status-icon').classList.remove('spin');
+}
+
+function updateAuthUI(user) {
+  if (user) {
+    $('auth-signed-out').style.display = 'none';
+    $('auth-signed-in').style.display = '';
+    $('user-name').textContent = user.displayName || user.email.split('@')[0];
+    $('user-email').textContent = user.email || '';
+    const avatar = $('user-avatar');
+    if (user.photoURL) avatar.innerHTML = `<img src="${user.photoURL}" alt="" referrerpolicy="no-referrer">`;
+    else avatar.textContent = (user.displayName || user.email || '?')[0].toUpperCase();
+    $('sync-btn-label').innerHTML = '☁️ ' + (user.displayName || user.email.split('@')[0]) + ' <span class="badge">SYNC</span>';
+  } else {
+    $('auth-signed-out').style.display = '';
+    $('auth-signed-in').style.display = 'none';
+    $('sync-btn-label').textContent = '☁️ Sincronizar dispositivos';
+    setAuthError('');
+  }
+}
+
+async function getRemoteCollection(userId, name) {
+  const { db, collection, getDocs } = fb;
+  const snap = await getDocs(collection(db, 'users', userId, name));
+  return snap.docs.map(d => d.data());
+}
+
+async function pushPlaylist(userId, p) {
+  if (!fb || !userId) return;
+  const { db, doc, setDoc } = fb;
+  await setDoc(doc(db, 'users', userId, 'playlists', p.id), {
+    id: p.id, name: p.name, trackIds: p.trackIds || [],
+    updatedAt: p.updatedAt || Date.now()
+  });
+}
+async function deletePlaylistRemote(userId, id) {
+  if (!fb || !userId) return;
+  const { db, doc, deleteDoc } = fb;
+  try { await deleteDoc(doc(db, 'users', userId, 'playlists', id)); } catch {}
+}
+async function pushRadio(userId, r) {
+  if (!fb || !userId) return;
+  const { db, doc, setDoc } = fb;
+  await setDoc(doc(db, 'users', userId, 'radios', r.id), {
+    id: r.id, name: r.name, url: r.url,
+    sub: r.sub || '', favicon: r.favicon || '',
+    updatedAt: r.updatedAt || Date.now()
+  });
+}
+async function deleteRadioRemote(userId, id) {
+  if (!fb || !userId) return;
+  const { db, doc, deleteDoc } = fb;
+  try { await deleteDoc(doc(db, 'users', userId, 'radios', id)); } catch {}
+}
+async function pushTrackMeta(userId, t) {
+  if (!fb || !userId) return;
+  const { db, doc, setDoc } = fb;
+  await setDoc(doc(db, 'users', userId, 'trackMeta', t.id), {
+    id: t.id, name: t.name, artist: t.artist || '',
+    source: t.source || '', artwork: t.artwork || '',
+    updatedAt: t.updatedAt || Date.now()
+  });
+}
+
+async function initialSync(userId) {
+  isApplyingRemote = true;
+  try {
+    const [remPls, remRadios, remTracks] = await Promise.all([
+      getRemoteCollection(userId, 'playlists'),
+      getRemoteCollection(userId, 'radios'),
+      getRemoteCollection(userId, 'trackMeta')
+    ]);
+
+    // Pull newer from remote
+    for (const p of remPls) {
+      const local = playlists.find(x => x.id === p.id);
+      if (!local || (p.updatedAt || 0) > (local.updatedAt || 0)) {
+        await idbPut('playlists', p);
+        if (local) Object.assign(local, p); else playlists.push(p);
+      }
+    }
+    const localRadios = await idbAll('radios');
+    for (const r of remRadios) {
+      const local = localRadios.find(x => x.id === r.id);
+      if (!local || (r.updatedAt || 0) > (local.updatedAt || 0)) {
+        await idbPut('radios', r);
+      }
+    }
+    for (const t of remTracks) {
+      const local = allTracks.find(x => x.id === t.id);
+      if (local && (t.updatedAt || 0) > (local.updatedAt || 0)) {
+        const updated = { ...local, name: t.name, artist: t.artist, artwork: t.artwork, updatedAt: t.updatedAt };
+        await idbPut('tracks', { ...updated, url: undefined });
+        Object.assign(local, updated);
+      }
+    }
+  } finally { isApplyingRemote = false; }
+
+  // Push local items missing or newer than remote
+  const remPlsAfter = await getRemoteCollection(userId, 'playlists');
+  for (const p of playlists) {
+    const r = remPlsAfter.find(x => x.id === p.id);
+    if (!r || (p.updatedAt || 0) > (r.updatedAt || 0)) await pushPlaylist(userId, p);
+  }
+  const remRadiosAfter = await getRemoteCollection(userId, 'radios');
+  const localRadiosAfter = await idbAll('radios');
+  for (const r of localRadiosAfter) {
+    const rem = remRadiosAfter.find(x => x.id === r.id);
+    if (!rem || (r.updatedAt || 0) > (rem.updatedAt || 0)) await pushRadio(userId, r);
+  }
+  const remTracksAfter = await getRemoteCollection(userId, 'trackMeta');
+  for (const t of allTracks) {
+    const rem = remTracksAfter.find(x => x.id === t.id);
+    if (!rem || (t.updatedAt || 0) > (rem.updatedAt || 0)) await pushTrackMeta(userId, t);
+  }
+
+  // Refresh UI
+  renderPlaylistTabs();
+  renderPlaylist();
+  await renderRadioFavorites();
+}
+
+function startRealtimeSync(userId) {
+  stopRealtimeSync();
+  const { db, collection, onSnapshot } = fb;
+
+  syncUnsubs.push(onSnapshot(collection(db, 'users', userId, 'playlists'), snap => {
+    snap.docChanges().forEach(async change => {
+      const data = change.doc.data();
+      isApplyingRemote = true;
+      try {
+        if (change.type === 'removed') {
+          playlists = playlists.filter(p => p.id !== data.id);
+          await idbDel('playlists', data.id);
+          if (currentPlaylistId === data.id && playlists[0]) currentPlaylistId = playlists[0].id;
+        } else {
+          const local = playlists.find(p => p.id === data.id);
+          if (!local) { playlists.push(data); await idbPut('playlists', data); }
+          else if ((data.updatedAt || 0) > (local.updatedAt || 0)) {
+            Object.assign(local, data);
+            await idbPut('playlists', data);
+          }
+        }
+        renderPlaylistTabs();
+        renderPlaylist();
+      } finally { isApplyingRemote = false; }
+    });
+  }));
+
+  syncUnsubs.push(onSnapshot(collection(db, 'users', userId, 'radios'), snap => {
+    snap.docChanges().forEach(async change => {
+      const data = change.doc.data();
+      isApplyingRemote = true;
+      try {
+        if (change.type === 'removed') await idbDel('radios', data.id);
+        else {
+          const local = await idbGet('radios', data.id);
+          if (!local || (data.updatedAt || 0) > (local.updatedAt || 0)) await idbPut('radios', data);
+        }
+        await renderRadioFavorites();
+      } finally { isApplyingRemote = false; }
+    });
+  }));
+
+  syncUnsubs.push(onSnapshot(collection(db, 'users', userId, 'trackMeta'), snap => {
+    snap.docChanges().forEach(async change => {
+      const data = change.doc.data();
+      isApplyingRemote = true;
+      try {
+        const local = allTracks.find(t => t.id === data.id);
+        if (local && (data.updatedAt || 0) > (local.updatedAt || 0)) {
+          local.name = data.name; local.artist = data.artist; local.artwork = data.artwork;
+          local.updatedAt = data.updatedAt;
+          const { url, ...rest } = local;
+          await idbPut('tracks', rest);
+          renderPlaylist();
+        }
+      } finally { isApplyingRemote = false; }
+    });
+  }));
+}
+function stopRealtimeSync() { syncUnsubs.forEach(u => { try { u(); } catch {} }); syncUnsubs = []; }
+
+// ============================================================
 // Tracks & playlists
 // ============================================================
 async function loadAllTracks() {
@@ -1044,8 +1480,12 @@ async function loadAllTracks() {
   allTracks = records.map(r => ({ ...r, url: URL.createObjectURL(r.blob) }));
 }
 async function saveTrack(track) {
+  track.updatedAt = Date.now();
   const { url, ...toStore } = track;
   await idbPut('tracks', toStore);
+  if (currentUser && !isApplyingRemote) {
+    pushTrackMeta(currentUser.uid, track).catch(e => console.warn('Push track failed', e));
+  }
 }
 async function loadPlaylists() {
   playlists = await idbAll('playlists');
@@ -1056,7 +1496,13 @@ async function loadPlaylists() {
   }
   currentPlaylistId = playlists[0].id;
 }
-async function savePlaylist(p) { await idbPut('playlists', p); }
+async function savePlaylist(p) {
+  p.updatedAt = Date.now();
+  await idbPut('playlists', p);
+  if (currentUser && !isApplyingRemote) {
+    pushPlaylist(currentUser.uid, p).catch(e => console.warn('Push playlist failed', e));
+  }
+}
 function getCurrentPlaylist() { return playlists.find(p => p.id === currentPlaylistId); }
 async function addToPlaylist(trackId, playlistId) {
   const p = playlists.find(x => x.id === playlistId);
@@ -1093,6 +1539,9 @@ function renderPlaylistTabs() {
       await idbDel('playlists', id);
       playlists = playlists.filter(p => p.id !== id);
       if (currentPlaylistId === id) currentPlaylistId = playlists[0].id;
+      if (currentUser && !isApplyingRemote) {
+        deletePlaylistRemote(currentUser.uid, id).catch(() => {});
+      }
       renderPlaylistTabs(); renderPlaylist();
     };
   });
@@ -1805,7 +2254,9 @@ async function renderRadioFavorites() {
       country: fav.sub, favicon: fav.favicon
     });
     el.querySelector('.del-fav').onclick = async () => {
-      await idbDel('radios', el.dataset.uuid);
+      const uuid = el.dataset.uuid;
+      await idbDel('radios', uuid);
+      if (currentUser && !isApplyingRemote) deleteRadioRemote(currentUser.uid, uuid).catch(() => {});
       renderRadioFavorites();
     };
   });
@@ -1814,15 +2265,21 @@ async function renderRadioFavorites() {
 async function toggleFavRadio(s, btn) {
   const favs = await getFavRadios();
   const exists = favs.find(f => f.id === s.stationuuid);
-  if (exists) { await idbDel('radios', s.stationuuid); btn.classList.remove('saved'); }
-  else {
+  if (exists) {
+    await idbDel('radios', s.stationuuid);
+    if (currentUser && !isApplyingRemote) deleteRadioRemote(currentUser.uid, s.stationuuid).catch(() => {});
+    btn.classList.remove('saved');
+  } else {
     const country = s.country || '';
     const tags = (s.tags || '').split(',').slice(0, 2).filter(Boolean).join(', ');
-    await idbPut('radios', {
+    const data = {
       id: s.stationuuid, name: s.name.trim(), url: s.url_resolved,
       sub: [country, tags].filter(Boolean).join(' · '),
-      favicon: s.favicon || ''
-    });
+      favicon: s.favicon || '',
+      updatedAt: Date.now()
+    };
+    await idbPut('radios', data);
+    if (currentUser && !isApplyingRemote) pushRadio(currentUser.uid, data).catch(() => {});
     btn.classList.add('saved');
   }
   renderRadioFavorites();
